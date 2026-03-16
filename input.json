@@ -1,62 +1,35 @@
 {
-    "name": "test",
-    "esdl_type" : "EConnection",
-    "description" : "this is a test description",
-    "relevant_links" : [
+    "name": "BatteryService",
+    "esdl_type": "Battery",
+    "description": "Simulates a Battery Energy Storage System (BESS) tracking State of Charge (SoC).",
+    "relevant_links": [],
+    "calculations": [
         {
-            "name" : "test link",
-            "url" : "https://example.com/test",
-            "description" : "this is a test link"
-        },
-        {
-            "name" : "another test link",
-            "url" : "https://example.com/anothertest",
-            "description" : "this is another link"
-        }
-    ],
-    "calculations" : [
-        {
-            "name": "test calculation",
-            "description" : "test",
-            "time_period_in_seconds" : 900,
-            "offset_in_seconds" : 0,
-            "inputs" : [
+            "name": "battery_dispatch",
+            "description": "Calculates the actual power and new SoC based on network power allocation.",
+            "time_period_in_seconds": 900,
+            "offset_in_seconds": 0,
+            "inputs": [
                 {
-                    "name" : "input1",
-                    "esdl_type" : "PVInstallation",
-                    "data_type" : "DOUBLE",
-                    "description" : "input 1 description",
-                    "unit" : "K"
+                    "name": "network_power_allocation_w",
+                    "esdl_type": "ElectricityNetwork",
+                    "data_type": "DOUBLE",
+                    "description": "Power requested from the network (Positive = Charge, Negative = Discharge)",
+                    "unit": "W"
                 }
             ],
-            "outputs" : [
+            "outputs": [
                 {
-                    "name" : "output1",
-                    "data_type" : "DOUBLE",
-                    "description" : "output 1 description",
-                    "unit" : "W"
+                    "name": "actual_power_w",
+                    "data_type": "DOUBLE",
+                    "description": "The actual power absorbed or injected after applying constraints",
+                    "unit": "W"
                 },
                 {
-                    "name" : "output2",
-                    "data_type" : "DOUBLE",
-                    "description" : "output 2 description",
-                    "unit" : "W"
-                }
-            ]
-        },
-        {
-            "name": "test calculation 2",
-            "description" : "test",
-            "time_period_in_seconds" : 900,
-            "offset_in_seconds" : 100,
-            "inputs" : [
-            ],
-            "outputs" : [
-                {
-                    "name" : "output3",
-                    "data_type" : "DOUBLE",
-                    "description" : "output 3 description",
-                    "unit" : "W"
+                    "name": "state_of_charge_wh",
+                    "data_type": "DOUBLE",
+                    "description": "Current energy stored in the battery",
+                    "unit": "Wh"
                 }
             ]
         }
