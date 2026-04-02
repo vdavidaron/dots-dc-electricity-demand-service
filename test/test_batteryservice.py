@@ -1,6 +1,7 @@
 import sys
 import os
 import unittest
+from unittest.mock import MagicMock
 import helics as h
 from datetime import datetime
 from dots_infrastructure.DataClasses import SimulatorConfiguration
@@ -90,5 +91,37 @@ class TestBatteryService(unittest.TestCase):
         except Exception as e:
             self.fail(f"BatteryService crashed during setup: {e}")
 
+    def test_battery_math_logic(self):
+        """Tests the actual charging logic without running the full simulation loop."""
+        service = Batteryservice()
+        
+        # Initialize it so it sets up self.battery_states
+        service.init_calculation_service(self.energy_system)
+
+        # --- THE FIX: Silence the InfluxDB Connector ---
+        service.influx_connector = MagicMock()
+        # -----------------------------------------------
+
+        # 1. Manually craft the inputs
+        mock_params = {"bess_allocation_w": 1000000.0} 
+        
+        # Mock the TimeStepInformation object
+        class MockTimeStep:
+            time_period_in_seconds = 900.0
+        mock_time_step = MockTimeStep()
+
+        # 2. Call your calculation function directly
+        output = service.battery_dispatch(
+            param_dict=mock_params, 
+            simulation_time=START_DATE_TIME, 
+            time_step_number=mock_time_step, 
+            esdl_id=TEST_BATTERY_UUID, 
+            energy_system=self.energy_system
+        )
+
+        # 3. Assert the math is correct!
+        self.assertEqual(output.state_of_charge_wh, 237500.0, "Battery SoC math is incorrect!")
+        
+        print("\n✅ Battery math logic passed successfully!")
 if __name__ == '__main__':
     unittest.main()
