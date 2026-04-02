@@ -1,29 +1,94 @@
-from datetime import datetime
+import sys
+import os
 import unittest
+import helics as h
+from datetime import datetime
 from dots_infrastructure.DataClasses import SimulatorConfiguration
 from esdl.esdl_handler import EnergySystemHandler
-import helics as h
-
 from dots_infrastructure import CalculationServiceHelperFunctions
 
-BROKER_TEST_PORT = 23404
+# --- PATH FIX ---
+# Adjusting path to find the source code in the ../src directory
+current_dir = os.path.dirname(__file__)
+src_path = os.path.abspath(os.path.join(current_dir, '..', 'src', 'Batteryservice'))
+sys.path.append(src_path)
+
+# Attempt to import the service (this checks your 'no-dot' import fix)
+try:
+    from batteryservice import Batteryservice
+except ImportError as e:
+    print(f"❌ Failed to import service: {e}")
+    Batteryservice = None
+
+# --- TEST SETTINGS ---
+BROKER_TEST_PORT = 23405  # Using a different port to avoid conflicts
 START_DATE_TIME = datetime(2024, 1, 1, 0, 0, 0)
 SIMULATION_DURATION_IN_SECONDS = 960
-TEST_ID = "test-id"
 
-def simulator_environment_e_connection():
-    return SimulatorConfiguration("EConnection", [TEST_ID], "Mock-Econnection", "127.0.0.1", BROKER_TEST_PORT, "test-id", SIMULATION_DURATION_IN_SECONDS, START_DATE_TIME, "test-host", "test-port", "test-username", "test-password", "test-database-name", h.HelicsLogLevel.DEBUG, ["PVInstallation", "EConnection"])
+# IMPORTANT: Replace this with the UUID of the Battery in your test.esdl
+TEST_BATTERY_UUID = "97395372-ee67-42ed-8dd6-bf5600b66225" 
 
-class Test(unittest.TestCase):
+def mock_battery_environment():
+    """Mocks the environment variables for the Battery Service."""
+    return SimulatorConfiguration(
+        "BatteryService",                    # name
+        [TEST_BATTERY_UUID],                 # esdl_ids
+        "Mock-Battery-Federate",             # federate_name
+        "127.0.0.1",                         # broker_ip
+        BROKER_TEST_PORT,                    # broker_port
+        "local-battery-test",                # simulation_id
+        SIMULATION_DURATION_IN_SECONDS,      # simulation_duration
+        START_DATE_TIME,                     # calculation_start_datetime
+        "localhost", "8086", "admin", "pass", "dots", # InfluxDB junk
+        h.HelicsLogLevel.DEBUG,              # log_level
+        ["Battery"]                          # registered_esdl_classes
+    )
+
+class TestBatteryService(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        """Spins up a local HELICS broker for the test."""
+        init_string = f"-f 1 --name=batterybroker --port={BROKER_TEST_PORT}"
+        cls.broker = h.helicsCreateBroker("zmq", "", init_string)
+        if not h.helicsBrokerIsConnected(cls.broker):
+            raise RuntimeError("Could not start HELICS broker for testing.")
+
+    @classmethod
+    def tearDownClass(cls):
+        """Cleans up the broker."""
+        h.helicsBrokerDisconnect(cls.broker)
+        h.helicsBrokerFree(cls.broker)
+        h.helicsCloseLibrary()
 
     def setUp(self):
-        CalculationServiceHelperFunctions.get_simulator_configuration_from_environment = simulator_environment_e_connection
-        esh = EnergySystemHandler()
-        esh.load_file("test.esdl")
-        self.energy_system = esh.get_energy_system()
+        # Inject the mock config
+        CalculationServiceHelperFunctions.get_simulator_configuration_from_environment = mock_battery_environment
+        
+        # Load the local ESDL
+        self.esh = EnergySystemHandler()
+        self.esh.load_file(os.path.join(current_dir, "test.esdl"))
+        self.energy_system = self.esh.get_energy_system()
 
-    def test_example(self):
-        pass
+    def test_battery_initialization(self):
+        """Verify the battery can start and reach the first time step."""
+        if Batteryservice is None:
+            self.fail("Batteryservice could not be imported! Check your import statements.")
+
+        try:
+            # Instantiate the service (should now take 0 arguments besides self)
+            service = Batteryservice()
+            
+            # Verify basic setup
+            self.assertIsNotNone(service, "Service instance is None")
+            
+            # Optional: Test one time step if your code allows
+            # service.run_step(60) 
+            
+            print("\n✅ Batteryservice successfully initialized and connected to HELICS!")
+            
+        except Exception as e:
+            self.fail(f"BatteryService crashed during setup: {e}")
 
 if __name__ == '__main__':
     unittest.main()
