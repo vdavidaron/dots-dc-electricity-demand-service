@@ -48,7 +48,7 @@ class Batteryservice(BatteryserviceBase):
             requested_power_w = 0.0
 
         # 2. Physics Calculation
-        dt_hours = time_step_number.time_period_in_seconds / 3600.0
+        dt_hours = 0.25
         requested_energy_wh = requested_power_w * dt_hours
         
         actual_power_w = 0.0
