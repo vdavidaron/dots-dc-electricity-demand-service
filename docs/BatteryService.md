@@ -12,7 +12,7 @@ Calculates the actual power and new SoC based on network power allocation.
 #### Input parameters
 |Name            |esdl_type            |data_type            |unit            |description            |
 |----------------|---------------------|---------------------|----------------|-----------------------|
-|network_power_allocation_w|ElectricityNetwork|DOUBLE|W|Power requested from the network (Positive = Charge, Negative = Discharge)|
+bess_allocation_w|ElectricityNetwork|DOUBLE|W|Power requested from the network (Positive = Charge, Negative = Discharge)|
 #### Output values
 |Name             |data_type             |unit             |description             |
 |-----------------|----------------------|-----------------|------------------------|

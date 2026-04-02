@@ -11,7 +11,7 @@
             "offset_in_seconds": 0,
             "inputs": [
                 {
-                    "name": "network_power_allocation_w",
+                    "name": "bess_allocation_w",
                     "esdl_type": "ElectricityNetwork",
                     "data_type": "DOUBLE",
                     "description": "Power requested from the network (Positive = Charge, Negative = Discharge)",

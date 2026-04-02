@@ -19,7 +19,7 @@ class BatteryserviceBase(HelicsSimulationExecutor):
         battery_dispatch_inputs = [
         
             SubscriptionDescription(esdl_type="ElectricityNetwork", 
-                                    input_name="network_power_allocation_w", 
+                                    input_name="bess_allocation_w", 
                                     input_unit="W", 
                                     input_type=h.HelicsDataType.DOUBLE),
         ]
