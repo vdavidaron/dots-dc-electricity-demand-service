@@ -1,9 +1,24 @@
 {
     "name": "BatteryService",
     "esdl_type": "Battery",
-    "description": "Simulates a Battery Energy Storage System (BESS) tracking State of Charge (SoC).",
+    "description": "Simulates a Battery Energy Storage System (BESS) tracking State of Charge (SoC) and degradation.",
     "relevant_links": [],
     "calculations": [
+        {
+            "name": "daily_degradation",
+            "description": "Calculates daily battery health impact.",
+            "time_period_in_seconds": 86400,
+            "offset_in_seconds": 0,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "health_capacity_degradation",
+                    "data_type": "DOUBLE",
+                    "description": "Degradation percentage per day.",
+                    "unit": "pct"
+                }
+            ]
+        },
         {
             "name": "battery_dispatch",
             "description": "Calculates the actual power and new SoC based on network power allocation.",
@@ -20,16 +35,28 @@
             ],
             "outputs": [
                 {
-                    "name": "actual_power_w",
+                    "name": "bess_power_w",
                     "data_type": "DOUBLE",
                     "description": "The actual power absorbed or injected after applying constraints",
                     "unit": "W"
                 },
                 {
-                    "name": "state_of_charge_wh",
+                    "name": "state_of_charge",
                     "data_type": "DOUBLE",
-                    "description": "Current energy stored in the battery",
-                    "unit": "Wh"
+                    "description": "Current SoC.",
+                    "unit": "pct"
+                },
+                {
+                    "name": "max_available_charge",
+                    "data_type": "DOUBLE",
+                    "description": "Max kW that can be charged.",
+                    "unit": "W"
+                },
+                {
+                    "name": "max_available_discharge",
+                    "data_type": "DOUBLE",
+                    "description": "Max kW that can be discharged.",
+                    "unit": "W"
                 }
             ]
         }

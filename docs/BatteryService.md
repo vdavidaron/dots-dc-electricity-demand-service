@@ -2,20 +2,25 @@
 
 # Calculation service for esdl_type Battery:
 
-Simulates a Battery Energy Storage System (BESS) tracking State of Charge (SoC).
+Simulates a Battery Energy Storage System (BESS) tracking State of Charge (SoC) and degradation.
 
 ## Calculations
 
-### battery_dispatch 
+### daily_degradation 
 
-Calculates the actual power and new SoC based on network power allocation.
-#### Input parameters
-|Name            |esdl_type            |data_type            |unit            |description            |
-|----------------|---------------------|---------------------|----------------|-----------------------|
-bess_allocation_w|ElectricityNetwork|DOUBLE|W|Power requested from the network (Positive = Charge, Negative = Discharge)|
+Calculates daily battery health impact.
 #### Output values
 |Name             |data_type             |unit             |description             |
 |-----------------|----------------------|-----------------|------------------------|
-|actual_power_w|DOUBLE|W|The actual power absorbed or injected after applying constraints|
-|state_of_charge_wh|DOUBLE|Wh|Current energy stored in the battery|
+|health_capacity_degradation|DOUBLE|pct|Degradation percentage per day.|
+### battery_dispatch 
+
+Calculates the actual power and new SoC based on internal logic.
+#### Output values
+|Name             |data_type             |unit             |description             |
+|-----------------|----------------------|-----------------|------------------------|
+|bess_power_w|DOUBLE|W|The actual power absorbed or injected after applying constraints|
+|state_of_charge|DOUBLE|pct|Current SoC.|
+|max_available_charge|DOUBLE|W|Max kW that can be charged.|
+|max_available_discharge|DOUBLE|W|Max kW that can be discharged.|
 

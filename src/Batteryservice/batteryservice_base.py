@@ -14,26 +14,57 @@ class BatteryserviceBase(HelicsSimulationExecutor):
         self.esdl_obj_mapping : dict[EsdlId, Battery]= {}
 
         
+        # Calculation: daily_degradation
+        self.daily_degradation_period_seconds = 86400
+        daily_degradation_inputs = [
+        
+        ]
+        daily_degradation_outputs = [
+        
+            PublicationDescription(global_flag=True, 
+                                    esdl_type="Battery",
+                                    output_name="health_capacity_degradation",
+                                    output_unit="pct", 
+                                    data_type=h.HelicsDataType.DOUBLE),
+        ]
+        daily_degradation_information = HelicsCalculationInformation(
+            time_period_in_seconds=86400,
+            offset=0, 
+            uninterruptible=False, 
+            wait_for_current_time_update=False, 
+            terminate_on_error=True, 
+            calculation_name="daily_degradation", 
+            inputs=daily_degradation_inputs, 
+            outputs=daily_degradation_outputs, 
+            calculation_function=self.daily_degradation
+        )
+        self.add_calculation(daily_degradation_information)
         # Calculation: battery_dispatch
         self.battery_dispatch_period_seconds = 900
         battery_dispatch_inputs = [
         
-            SubscriptionDescription(esdl_type="ElectricityNetwork", 
-                                    input_name="bess_allocation_w", 
-                                    input_unit="W", 
-                                    input_type=h.HelicsDataType.DOUBLE),
         ]
         battery_dispatch_outputs = [
         
             PublicationDescription(global_flag=True, 
                                     esdl_type="Battery",
-                                    output_name="actual_power_w",
+                                    output_name="bess_power_w",
                                     output_unit="W", 
                                     data_type=h.HelicsDataType.DOUBLE),
             PublicationDescription(global_flag=True, 
                                     esdl_type="Battery",
-                                    output_name="state_of_charge_wh",
-                                    output_unit="Wh", 
+                                    output_name="state_of_charge",
+                                    output_unit="pct", 
+                                    data_type=h.HelicsDataType.DOUBLE),
+            PublicationDescription(global_flag=True, 
+                                    esdl_type="Battery",
+                                    output_name="max_available_charge",
+                                    output_unit="W", 
+                                    data_type=h.HelicsDataType.DOUBLE),
+            PublicationDescription(global_flag=True, 
+                                    esdl_type="Battery",
+                                    output_name="max_available_discharge",
+                                    output_unit="W", 
                                     data_type=h.HelicsDataType.DOUBLE),
         ]
         battery_dispatch_information = HelicsCalculationInformation(
@@ -55,6 +86,9 @@ class BatteryserviceBase(HelicsSimulationExecutor):
             if hasattr(esdl_obj, "id"):
                 self.esdl_obj_mapping[esdl_obj.id] = esdl_obj
 
+    
+    def daily_degradation(self, param_dict : dict, simulation_time : datetime, time_step_number : TimeStepInformation, esdl_id : EsdlId, energy_system : EnergySystem):
+        pass
     
     def battery_dispatch(self, param_dict : dict, simulation_time : datetime, time_step_number : TimeStepInformation, esdl_id : EsdlId, energy_system : EnergySystem):
         pass
