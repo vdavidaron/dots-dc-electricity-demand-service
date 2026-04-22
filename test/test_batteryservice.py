@@ -120,17 +120,21 @@ class TestBatteryService(unittest.TestCase):
         )
 
         # 3. Assert the math is correct!
-        # Initial SoC was 0. Power = 1,000,000 W, charge efficiency 0.95, time step = 0.25h.
+        # Initial SoC was 50% = 1,350,000 Wh.
+        # Power = 1,000,000 W, charge efficiency 0.95, time step = 0.25h.
         # Added Energy = 1,000,000 * 0.95 * 0.25 = 237,500 Wh.
-        # Expected SoC Pct = (237,500 / 2,700,000) * 100
-        self.assertAlmostEqual(output.state_of_charge, (237500.0 / 2700000.0) * 100.0, places=4, msg="Battery SoC math is incorrect!")
+        # New SoC = 1,350,000 + 237,500 = 1,587,500 Wh
+        # Expected SoC Pct = (1,587,500 / 2,700,000) * 100 = 58.796%
+        self.assertAlmostEqual(output.state_of_charge, (1587500.0 / 2700000.0) * 100.0, places=3, msg="Battery SoC math is incorrect!")
         self.assertAlmostEqual(output.bess_power_w, 1000000.0, places=2, msg="Battery actual power output mismatch!")
-        # Max capacity limits test
+        # Max capacity limits test (Available charge headroom)
+        # Headroom = 2,700,000 - 1,587,500 = 1,112,500 Wh
+        # Max Charge Power = 1,112,500 / (0.95 * 0.25) = 4,684,210.5 W (but capped by 2.7MW maxChargeRate)
         self.assertAlmostEqual(output.max_available_charge, 2700000.0, places=2)
         
-        # Max Discharge is limited by SoC = 237,500 Wh. 
-        # Convert to power limit: (237,500 * 0.95) / 0.25h = 902,500 W
-        self.assertAlmostEqual(output.max_available_discharge, 902500.0, places=2)
+        # Max Discharge is limited by SoC = 1,587,500 Wh. 
+        # Convert to power limit: (1,587,500 * 0.95) / 0.25h = 6,032,500 W (capped by 2.7MW)
+        self.assertAlmostEqual(output.max_available_discharge, 2700000.0, places=2)
 
         # 4. Test daily_degradation behavior
         deg_output = service.daily_degradation(

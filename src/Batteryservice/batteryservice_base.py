@@ -42,7 +42,7 @@ class BatteryserviceBase(HelicsSimulationExecutor):
         # Calculation: battery_dispatch
         self.battery_dispatch_period_seconds = 900
         battery_dispatch_inputs = [
-        
+            SubscriptionDescription(esdl_type="ElectricityNetwork", input_name="bess_allocation_w", input_unit="W", input_type=h.HelicsDataType.DOUBLE),
         ]
         battery_dispatch_outputs = [
         

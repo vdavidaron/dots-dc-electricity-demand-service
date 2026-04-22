@@ -22,6 +22,8 @@ class Batteryservice(BatteryserviceBase):
         super().__init__()
         # We need a dictionary to keep track of the SoC for every battery in the simulation
         self.battery_states = {}
+        self.manual_subs = {}
+        self._manual_subs_registered = False
     
     def init_calculation_service(self, energy_system: esdl.EnergySystem):
         super().init_calculation_service(energy_system)
@@ -39,8 +41,8 @@ class Batteryservice(BatteryserviceBase):
             max_discharge_w = 2_700_000.0
             if esdl_battery is not None:
                 if getattr(esdl_battery, 'capacity', 0.0) != 0.0:
-                    # ESDL capacity is defined in kWh, script works with Wh
-                    capacity_wh = float(esdl_battery.capacity) * 1000.0
+                    # ESDL capacity is defined in Wh
+                    capacity_wh = float(esdl_battery.capacity)
                     max_charge_w = capacity_wh
                     max_discharge_w = capacity_wh
                 if getattr(esdl_battery, 'chargeEfficiency', 0.0) != 0.0:
@@ -53,7 +55,7 @@ class Batteryservice(BatteryserviceBase):
                     max_discharge_w = float(esdl_battery.maxDischargeRate)
             
             self.battery_states[esdl_id] = {
-                "soc_wh": 0.0,                   # Starting at 0 charge
+                "soc_wh": capacity_wh * 0.5,     # Start at 50% SoC to match EMS logic
                 "capacity_wh": capacity_wh,
                 "max_charge_power_w": max_charge_w,
                 "max_discharge_power_w": max_discharge_w,
@@ -62,11 +64,55 @@ class Batteryservice(BatteryserviceBase):
                 "daily_throughput_wh": 0.0       # Track daily energy cycled
             }
 
+    def _register_manual_subs_with_handle(self, fed_handle):
+        """Called by framework patch to register manual subs safely."""
+        if self._manual_subs_registered: return
+
+        for esdl_id in self.simulator_configuration.esdl_ids:
+            esdl_battery = self.esdl_obj_mapping.get(esdl_id)
+            network_id = None
+            if esdl_battery:
+                # Trace port connections to find the ElectricityNetwork ID
+                for port in esdl_battery.port:
+                    for connected_port in port.connectedTo:
+                        asset = connected_port.eContainer()
+                        if type(asset).__name__ == "ElectricityNetwork":
+                            network_id = asset.id
+                            break
+                    if network_id: break
+            
+            if network_id:
+                key = f"ElectricityNetwork/bess_allocation_w/{network_id}"
+                LOGGER.info(f"Manual registration: {key}")
+                self.manual_subs[esdl_id] = h.helicsFederateRegisterSubscription(fed_handle, key, "W")
+            else:
+                LOGGER.warning(f"Connected ElectricityNetwork not found for {esdl_id}")
+        
+        self._manual_subs_registered = True
+
     def battery_dispatch(self, param_dict: dict, simulation_time: datetime, time_step_number: TimeStepInformation, esdl_id: EsdlId, energy_system: esdl.EnergySystem):
-        # Get requested power
+        # ── 1. Lazy registration on first step (if not already handled by framework patch) ──
+        if not self._manual_subs_registered:
+            if hasattr(self, 'value_federate'):
+                self._register_manual_subs_with_handle(self.value_federate)
+            else:
+                # Unit test path: federate is not active yet or mocked
+                try:
+                    fed_name = f"{self.simulator_configuration.model_id}/battery_dispatch"
+                    fed_handle = h.helicsGetFederateByName(fed_name)
+                    self._register_manual_subs_with_handle(fed_handle)
+                except:
+                    pass
+
+        # ── 2. READ inputs: Try formal param_dict first (unit tests), then manual sub (sim) ──
         requested_power_w = CalculationServiceHelperFunctions.get_single_param_with_name(param_dict, "bess_allocation_w")
+        
         if requested_power_w is None:
-            requested_power_w = 0.0
+            sub = self.manual_subs.get(esdl_id)
+            if sub and h.helicsInputIsUpdated(sub):
+                requested_power_w = h.helicsInputGetDouble(sub)
+            else:
+                requested_power_w = 0.0
 
         # Generate realistic outputs based on input allocation
         state = self.battery_states.get(esdl_id)
@@ -81,7 +127,7 @@ class Batteryservice(BatteryserviceBase):
             esdl_battery = self.esdl_obj_mapping.get(esdl_id)
             if esdl_battery is not None:
                 if getattr(esdl_battery, 'capacity', 0.0) != 0.0:
-                    capacity_wh = float(esdl_battery.capacity) * 1000.0
+                    capacity_wh = float(esdl_battery.capacity)
                     max_charge_w = capacity_wh
                     max_discharge_w = capacity_wh
                 if getattr(esdl_battery, 'chargeEfficiency', 0.0) != 0.0:
@@ -94,7 +140,7 @@ class Batteryservice(BatteryserviceBase):
                     max_discharge_w = float(esdl_battery.maxDischargeRate)
 
             state = {
-                "soc_wh": 0.0,
+                "soc_wh": capacity_wh * 0.5,     # Start at 50% SoC
                 "capacity_wh": capacity_wh,
                 "max_charge_power_w": max_charge_w,
                 "max_discharge_power_w": max_discharge_w,
@@ -152,8 +198,8 @@ class Batteryservice(BatteryserviceBase):
         reported_max_discharge_w = min(max_discharge_pwr_w, (state["soc_wh"] * discharge_eff) / time_step_hours)
 
         # Write internal states to InfluxDB for debugging/dashboards
-        self.influx_connector.set_time_step_data_point(esdl_id, "SoC_Percent", simulation_time, state_of_charge_pct)
-        self.influx_connector.set_time_step_data_point(esdl_id, "bess_power_w", simulation_time, bess_power_w)
+        self.influx_connector.set_time_step_data_point(esdl_id, "state_of_charge", simulation_time, state_of_charge_pct)
+        self.influx_connector.set_time_step_data_point(esdl_id, "Battery_Power_W", simulation_time, bess_power_w)
 
         # Return outputs via the generated Dataclass
         return BatteryDispatchOutput(
