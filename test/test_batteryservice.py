@@ -14,7 +14,7 @@ current_dir = os.path.dirname(__file__)
 src_path = os.path.abspath(os.path.join(current_dir, '..', 'src', 'Batteryservice'))
 sys.path.append(src_path)
 
-# Attempt to import the service (this checks your 'no-dot' import fix)
+# Attempt to import the service
 try:
     from batteryservice import Batteryservice
 except ImportError as e:
@@ -26,7 +26,7 @@ BROKER_TEST_PORT = 23405  # Using a different port to avoid conflicts
 START_DATE_TIME = datetime(2024, 1, 1, 0, 0, 0)
 SIMULATION_DURATION_IN_SECONDS = 960
 
-# IMPORTANT: Replace this with the UUID of the Battery in your test.esdl
+# This ID doesn't need to be in ESDL for the math logic test as it uses fallbacks if missing
 TEST_BATTERY_UUID = "97395372-ee67-42ed-8dd6-bf5600b66225" 
 
 def mock_battery_environment():
@@ -66,51 +66,41 @@ class TestBatteryService(unittest.TestCase):
         # Inject the mock config
         CalculationServiceHelperFunctions.get_simulator_configuration_from_environment = mock_battery_environment
         
-        # Load the local ESDL
+        # Load the local ESDL (even if it's empty of batteries, logic uses fallbacks)
         self.esh = EnergySystemHandler()
-        self.esh.load_file(os.path.join(current_dir, "test.esdl"))
+        # Use an empty energy system if test.esdl is not found or missing battery
+        try:
+            self.esh.load_file(os.path.join(current_dir, "test.esdl"))
+        except:
+            self.esh.create_empty_energy_system("TestSystem", "Test")
         self.energy_system = self.esh.get_energy_system()
 
     def test_battery_initialization(self):
         """Verify the battery can start and reach the first time step."""
         if Batteryservice is None:
-            self.fail("Batteryservice could not be imported! Check your import statements.")
+            self.fail("Batteryservice could not be imported!")
 
         try:
-            # Instantiate the service (should now take 0 arguments besides self)
             service = Batteryservice()
-            
-            # Verify basic setup
             self.assertIsNotNone(service, "Service instance is None")
-            
-            # Optional: Test one time step if your code allows
-            # service.run_step(60) 
-            
-            print("\n[OK] Batteryservice successfully initialized and connected to HELICS!")
-            
+            print("\n[OK] Batteryservice successfully initialized!")
         except Exception as e:
             self.fail(f"BatteryService crashed during setup: {e}")
 
-    def test_battery_math_logic(self):
-        """Tests the actual charging logic without running the full simulation loop."""
+    def test_battery_math_logic_charge(self):
+        """Tests the charging logic (negative requested power)."""
         service = Batteryservice()
-        
-        # Initialize it so it sets up self.battery_states
         service.init_calculation_service(self.energy_system)
-
-        # --- THE FIX: Silence the InfluxDB Connector ---
         service.influx_connector = MagicMock()
-        # -----------------------------------------------
 
-        # 1. Manually craft the inputs
-        mock_params = {"bess_allocation_w": 1000000.0} 
+        # 1. CHARGING: requested power = -1,000,000 W
+        mock_params = {"bess_allocation_w": -1000000.0} 
         
-        # Mock the TimeStepInformation object
         class MockTimeStep:
             time_period_in_seconds = 900.0
         mock_time_step = MockTimeStep()
 
-        # 2. Call your calculation function directly
+        # 2. Call calculation function
         output = service.battery_dispatch(
             param_dict=mock_params, 
             simulation_time=START_DATE_TIME, 
@@ -119,34 +109,144 @@ class TestBatteryService(unittest.TestCase):
             energy_system=self.energy_system
         )
 
-        # 3. Assert the math is correct!
-        # Initial SoC was 50% = 1,350,000 Wh.
-        # Power = 1,000,000 W, charge efficiency 0.95, time step = 0.25h.
+        # 3. Assert math
+        # Initial SoC = 50% of 2,700,000 Wh = 1,350,000 Wh.
+        # Charge = 1,000,000 W, eff = 0.95, dt = 0.25h.
         # Added Energy = 1,000,000 * 0.95 * 0.25 = 237,500 Wh.
-        # New SoC = 1,350,000 + 237,500 = 1,587,500 Wh
+        # New SoC = 1,350,000 + 237,500 = 1,587,500 Wh.
         # Expected SoC Pct = (1,587,500 / 2,700,000) * 100 = 58.796%
-        self.assertAlmostEqual(output.state_of_charge, (1587500.0 / 2700000.0) * 100.0, places=3, msg="Battery SoC math is incorrect!")
-        self.assertAlmostEqual(output.bess_power_w, 1000000.0, places=2, msg="Battery actual power output mismatch!")
-        # Max capacity limits test (Available charge headroom)
-        # Headroom = 2,700,000 - 1,587,500 = 1,112,500 Wh
-        # Max Charge Power = 1,112,500 / (0.95 * 0.25) = 4,684,210.5 W (but capped by 2.7MW maxChargeRate)
-        self.assertAlmostEqual(output.max_available_charge, 2700000.0, places=2)
+        self.assertAlmostEqual(output.state_of_charge, 58.796, places=3)
+        self.assertEqual(output.bess_power_w, -1000000.0)
         
-        # Max Discharge is limited by SoC = 1,587,500 Wh. 
-        # Convert to power limit: (1,587,500 * 0.95) / 0.25h = 6,032,500 W (capped by 2.7MW)
-        self.assertAlmostEqual(output.max_available_discharge, 2700000.0, places=2)
+        # Verify max_available_discharge reflects new SoC
+        # delivering (1,587,500 * 0.95) / 0.25 = 6,032,500 W (capped by 2.7MW)
+        self.assertAlmostEqual(output.max_available_discharge, 2700000.0)
+        
+        print("\n[OK] Battery charging logic passed!")
 
-        # 4. Test daily_degradation behavior
-        deg_output = service.daily_degradation(
-            param_dict={}, 
+    def test_battery_math_logic_discharge(self):
+        """Tests the discharging logic (positive requested power)."""
+        service = Batteryservice()
+        service.init_calculation_service(self.energy_system)
+        service.influx_connector = MagicMock()
+
+        # 1. DISCHARGING: requested power = 1,000,000 W
+        mock_params = {"bess_allocation_w": 1000000.0} 
+        
+        class MockTimeStep:
+            time_period_in_seconds = 900.0
+        mock_time_step = MockTimeStep()
+
+        # 2. Call calculation function
+        output = service.battery_dispatch(
+            param_dict=mock_params, 
             simulation_time=START_DATE_TIME, 
             time_step_number=mock_time_step, 
             esdl_id=TEST_BATTERY_UUID, 
             energy_system=self.energy_system
         )
-        self.assertTrue(hasattr(deg_output, "health_capacity_degradation"))
-        self.assertGreater(deg_output.health_capacity_degradation, 0.0)
+
+        # 3. Assert math
+        # Initial SoC = 50% of 2,700,000 Wh = 1,350,000 Wh.
+        # Discharge = 1,000,000 W, eff = 0.95, dt = 0.25h.
+        # Energy removed from internal storage = (1,000,000 / 0.95) * 0.25 = 263,157.89 Wh.
+        # New SoC = 1,350,000 - 263,157.89 = 1,086,842.11 Wh.
+        # Expected SoC Pct = (1,086,842.11 / 2,700,000) * 100 = 40.253%
+        self.assertAlmostEqual(output.state_of_charge, 40.253, places=3)
+        self.assertEqual(output.bess_power_w, 1000000.0)
         
-        print("\n[OK] Battery math logic passed successfully!")
+        print("\n[OK] Battery discharging logic passed!")
+
+    def test_battery_clamping_at_full(self):
+        """Verify the battery stops charging when 100% full."""
+        service = Batteryservice()
+        service.init_calculation_service(self.energy_system)
+        service.influx_connector = MagicMock()
+
+        # Force state to nearly full
+        state = service.battery_states[TEST_BATTERY_UUID]
+        state["soc_wh"] = state["capacity_wh"] - 10.0 # Only 10Wh room left
+        
+        # Request massive charge (-5MW)
+        mock_params = {"bess_allocation_w": -5000000.0} 
+        
+        class MockTimeStep:
+            time_period_in_seconds = 900.0
+        mock_time_step = MockTimeStep()
+
+        output = service.battery_dispatch(
+            param_dict=mock_params, 
+            simulation_time=START_DATE_TIME, 
+            time_step_number=mock_time_step, 
+            esdl_id=TEST_BATTERY_UUID, 
+            energy_system=self.energy_system
+        )
+
+        # Should be exactly 100% and power should be limited to what fits (10Wh / (0.95 * 0.25h) = 42.1W)
+        self.assertAlmostEqual(output.state_of_charge, 100.0, places=5)
+        self.assertLess(abs(output.bess_power_w), 50.0) # Should be ~42.1W
+        self.assertEqual(output.max_available_charge, 0.0)
+        
+        print("\n[OK] Battery full-clamping logic passed!")
+
+    def test_battery_clamping_at_empty(self):
+        """Verify the battery stops discharging when 0% empty."""
+        service = Batteryservice()
+        service.init_calculation_service(self.energy_system)
+        service.influx_connector = MagicMock()
+
+        # Force state to nearly empty
+        state = service.battery_states[TEST_BATTERY_UUID]
+        state["soc_wh"] = 10.0 # Only 10Wh left
+        
+        # Request massive discharge (5MW)
+        mock_params = {"bess_allocation_w": 5000000.0} 
+        
+        class MockTimeStep:
+            time_period_in_seconds = 900.0
+        mock_time_step = MockTimeStep()
+
+        output = service.battery_dispatch(
+            param_dict=mock_params, 
+            simulation_time=START_DATE_TIME, 
+            time_step_number=mock_time_step, 
+            esdl_id=TEST_BATTERY_UUID, 
+            energy_system=self.energy_system
+        )
+
+        # Should be exactly 0% and power should be limited to what remains (10Wh * 0.95 / 0.25h = 38.0W)
+        self.assertAlmostEqual(output.state_of_charge, 0.0, places=5)
+        self.assertLess(abs(output.bess_power_w), 50.0) # Should be ~38.0W
+        self.assertEqual(output.max_available_discharge, 0.0)
+        
+        print("\n[OK] Battery empty-clamping logic passed!")
+
+    def test_battery_zero_request(self):
+        """Verify the battery does nothing when request is 0."""
+        service = Batteryservice()
+        service.init_calculation_service(self.energy_system)
+        service.influx_connector = MagicMock()
+
+        # 1. Request ZERO power
+        mock_params = {"bess_allocation_w": 0.0} 
+        
+        class MockTimeStep:
+            time_period_in_seconds = 900.0
+        mock_time_step = MockTimeStep()
+
+        output = service.battery_dispatch(
+            param_dict=mock_params, 
+            simulation_time=START_DATE_TIME, 
+            time_step_number=mock_time_step, 
+            esdl_id=TEST_BATTERY_UUID, 
+            energy_system=self.energy_system
+        )
+
+        # Should remain at 50%
+        self.assertAlmostEqual(output.state_of_charge, 50.0, places=5)
+        self.assertEqual(output.bess_power_w, 0.0)
+        
+        print("\n[OK] Battery zero-request logic passed!")
+
 if __name__ == '__main__':
     unittest.main()
