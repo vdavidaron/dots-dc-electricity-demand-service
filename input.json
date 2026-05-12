@@ -20,19 +20,11 @@
             ]
         },
         {
-            "name": "battery_dispatch",
-            "description": "Calculates the actual power and new SoC based on network power allocation.",
+            "name": "battery_state",
+            "description": "Publishes the current physical state limits of the battery.",
             "time_period_in_seconds": 900,
             "offset_in_seconds": 0,
-            "inputs": [
-                {
-                    "name": "bess_allocation_w",
-                    "esdl_type": "ElectricityNetwork",
-                    "data_type": "DOUBLE",
-                    "description": "Power requested from the network (Positive = Charge, Negative = Discharge)",
-                    "unit": "W"
-                }
-            ],
+            "inputs": [],
             "outputs": [
                 {
                     "name": "bess_power_w",
@@ -59,6 +51,22 @@
                     "unit": "W"
                 }
             ]
+        },
+        {
+            "name": "battery_dispatch",
+            "description": "Consumes the network setpoint.",
+            "time_period_in_seconds": 900,
+            "offset_in_seconds": 0,
+            "inputs": [
+                {
+                    "name": "bess_allocation_w",
+                    "esdl_type": "ElectricityNetwork",
+                    "data_type": "DOUBLE",
+                    "description": "Power requested from the network (Positive = Charge, Negative = Discharge)",
+                    "unit": "W"
+                }
+            ],
+            "outputs": []
         }
     ]
 }

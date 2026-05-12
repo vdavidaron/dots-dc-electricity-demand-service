@@ -65,56 +65,7 @@ class Batteryservice(BatteryserviceBase):
                 "daily_throughput_wh": 0.0       # Track daily energy cycled
             }
 
-    def _register_manual_subs_with_handle(self, fed_handle):
-        """Called by framework patch to register manual subs safely."""
-        if self._manual_subs_registered: return
-
-        for esdl_id in self.simulator_configuration.esdl_ids:
-            esdl_battery = self.esdl_obj_mapping.get(esdl_id)
-            network_id = None
-            if esdl_battery:
-                # Trace port connections to find the ElectricityNetwork ID
-                for port in esdl_battery.port:
-                    for connected_port in port.connectedTo:
-                        asset = connected_port.eContainer()
-                        if type(asset).__name__ == "ElectricityNetwork":
-                            network_id = asset.id
-                            break
-                    if network_id: break
-            
-            if network_id:
-                key = f"ElectricityNetwork/bess_allocation_w/{network_id}"
-                LOGGER.info(f"Manual registration: {key}")
-                self.manual_subs[esdl_id] = h.helicsFederateRegisterSubscription(fed_handle, key, "W")
-            else:
-                LOGGER.warning(f"Connected ElectricityNetwork not found for {esdl_id}")
-        
-        self._manual_subs_registered = True
-
-    def battery_dispatch(self, param_dict: dict, simulation_time: datetime, time_step_number: TimeStepInformation, esdl_id: EsdlId, energy_system: esdl.EnergySystem):
-        # ── 1. Lazy registration on first step ──
-        if not self._manual_subs_registered:
-            if hasattr(self, 'value_federate'):
-                self._register_manual_subs_with_handle(self.value_federate)
-            else:
-                # Unit test path
-                try:
-                    fed_name = f"{self.simulator_configuration.model_id}/battery_dispatch"
-                    fed_handle = h.helicsGetFederateByName(fed_name)
-                    self._register_manual_subs_with_handle(fed_handle)
-                except:
-                    pass
-
-        # ── 2. READ inputs: CONVENTION (+ discharge / - charge) ──
-        requested_power_w = CalculationServiceHelperFunctions.get_single_param_with_name(param_dict, "bess_allocation_w")
-        
-        if requested_power_w is None:
-            sub = self.manual_subs.get(esdl_id)
-            if sub and h.helicsInputIsUpdated(sub):
-                requested_power_w = h.helicsInputGetDouble(sub)
-            else:
-                requested_power_w = 0.0
-
+    def battery_state(self, param_dict: dict, simulation_time: datetime, time_step_number: TimeStepInformation, esdl_id: EsdlId, energy_system: esdl.EnergySystem):
         state = self.battery_states.get(esdl_id)
         if not state: return BatteryDispatchOutput(0.0, 50.0, 0.0, 0.0)
             
@@ -127,25 +78,49 @@ class Batteryservice(BatteryserviceBase):
         max_charge_pwr_w = state["max_charge_power_w"]
         max_discharge_pwr_w = state["max_discharge_power_w"]
         
-        # Calculate maximum limits based on current SoC
         remaining_capacity_wh = capacity_wh - current_soc_wh
-        
-        # Max W that can be DRAWN from network to charge (positive value)
         max_available_charge_w = min(max_charge_pwr_w, remaining_capacity_wh / (charge_eff * time_step_hours))
+        max_available_discharge_w = min(max_discharge_pwr_w, (current_soc_wh * discharge_eff) / time_step_hours)
         
-        # Max W that can be SUPPLIED to network by discharging (positive value)
+        state_of_charge_pct = (state["soc_wh"] / capacity_wh) * 100.0
+        bess_power_w = state.get("last_bess_power_w", 0.0)
+
+        return BatteryDispatchOutput(
+            bess_power_w=bess_power_w,
+            state_of_charge=state_of_charge_pct,
+            max_available_charge=max_available_charge_w,
+            max_available_discharge=max_available_discharge_w
+        )
+
+    def battery_dispatch(self, param_dict: dict, simulation_time: datetime, time_step_number: TimeStepInformation, esdl_id: EsdlId, energy_system: esdl.EnergySystem):
+        requested_power_w = CalculationServiceHelperFunctions.get_single_param_with_name(param_dict, "bess_allocation_w")
+        if requested_power_w is None:
+            requested_power_w = 0.0
+
+        state = self.battery_states.get(esdl_id)
+        if not state: return {}
+            
+        time_step_hours = 900.0 / 3600.0 
+        capacity_wh = state["capacity_wh"]
+        current_soc_wh = state["soc_wh"]
+        charge_eff = state["charge_efficiency"]
+        discharge_eff = state["discharge_efficiency"]
+        
+        max_charge_pwr_w = state["max_charge_power_w"]
+        max_discharge_pwr_w = state["max_discharge_power_w"]
+        
+        remaining_capacity_wh = capacity_wh - current_soc_wh
+        max_available_charge_w = min(max_charge_pwr_w, remaining_capacity_wh / (charge_eff * time_step_hours))
         max_available_discharge_w = min(max_discharge_pwr_w, (current_soc_wh * discharge_eff) / time_step_hours)
         
         bess_power_w = 0.0
         if requested_power_w > 0:
-            # DISCHARGING requested (+ value)
             actual_discharge_w = min(requested_power_w, max_available_discharge_w)
             bess_power_w = actual_discharge_w
             energy_removed_wh = (actual_discharge_w / discharge_eff) * time_step_hours
             state["soc_wh"] -= energy_removed_wh
             state["daily_throughput_wh"] += energy_removed_wh
         elif requested_power_w < 0:
-            # CHARGING requested (- value)
             p_charge_req = -requested_power_w
             actual_charge_w = min(p_charge_req, max_available_charge_w)
             bess_power_w = -actual_charge_w
@@ -153,28 +128,21 @@ class Batteryservice(BatteryserviceBase):
             state["soc_wh"] += energy_added_wh
             state["daily_throughput_wh"] += energy_added_wh
 
-        # Ensure SoC remains strictly within boundaries
         state["soc_wh"] = max(0.0, min(capacity_wh, state["soc_wh"]))
+        state["last_bess_power_w"] = bess_power_w
         state_of_charge_pct = (state["soc_wh"] / capacity_wh) * 100.0
         
-        # Recalculate max available for output reporting
         remaining_capacity_wh = capacity_wh - state["soc_wh"]
         reported_max_charge_w = min(max_charge_pwr_w, remaining_capacity_wh / (charge_eff * time_step_hours))
         reported_max_discharge_w = min(max_discharge_pwr_w, (state["soc_wh"] * discharge_eff) / time_step_hours)
 
-        # Write internal states to InfluxDB
         self.influx_connector.set_time_step_data_point(esdl_id, "state_of_charge", simulation_time, state_of_charge_pct)
         self.influx_connector.set_time_step_data_point(esdl_id, "bess_power_w", simulation_time, bess_power_w)
         self.influx_connector.set_time_step_data_point(esdl_id, "Requested_Power_W", simulation_time, requested_power_w)
         self.influx_connector.set_time_step_data_point(esdl_id, "Max_Available_Charge_W", simulation_time, reported_max_charge_w)
         self.influx_connector.set_time_step_data_point(esdl_id, "Max_Available_Discharge_W", simulation_time, reported_max_discharge_w)
 
-        return BatteryDispatchOutput(
-            bess_power_w=bess_power_w,
-            state_of_charge=state_of_charge_pct,
-            max_available_charge=reported_max_charge_w,
-            max_available_discharge=reported_max_discharge_w
-        )
+        return {}
     
     def daily_degradation(self, param_dict : dict, simulation_time : datetime, time_step_number : TimeStepInformation, esdl_id : EsdlId, energy_system : EnergySystem):
         state = self.battery_states.get(esdl_id)

@@ -39,13 +39,10 @@ class BatteryserviceBase(HelicsSimulationExecutor):
             calculation_function=self.daily_degradation
         )
         self.add_calculation(daily_degradation_information)
-        # Calculation: battery_dispatch
-        self.battery_dispatch_period_seconds = 900
-        battery_dispatch_inputs = [
-            SubscriptionDescription(esdl_type="ElectricityNetwork", input_name="bess_allocation_w", input_unit="W", input_type=h.HelicsDataType.DOUBLE),
-        ]
-        battery_dispatch_outputs = [
-        
+        # Calculation: battery_state
+        self.battery_state_period_seconds = 900
+        battery_state_inputs = []
+        battery_state_outputs = [
             PublicationDescription(global_flag=True, 
                                     esdl_type="Battery",
                                     output_name="bess_power_w",
@@ -67,6 +64,25 @@ class BatteryserviceBase(HelicsSimulationExecutor):
                                     output_unit="W", 
                                     data_type=h.HelicsDataType.DOUBLE),
         ]
+        battery_state_information = HelicsCalculationInformation(
+            time_period_in_seconds=900,
+            offset=0, 
+            uninterruptible=False, 
+            wait_for_current_time_update=False, 
+            terminate_on_error=True, 
+            calculation_name="battery_state", 
+            inputs=battery_state_inputs, 
+            outputs=battery_state_outputs, 
+            calculation_function=self.battery_state
+        )
+        self.add_calculation(battery_state_information)
+
+        # Calculation: battery_dispatch
+        self.battery_dispatch_period_seconds = 900
+        battery_dispatch_inputs = [
+            SubscriptionDescription(esdl_type="ElectricityNetwork", input_name="bess_allocation_w", input_unit="W", input_type=h.HelicsDataType.DOUBLE),
+        ]
+        battery_dispatch_outputs = []
         battery_dispatch_information = HelicsCalculationInformation(
             time_period_in_seconds=900,
             offset=0, 
@@ -90,6 +106,8 @@ class BatteryserviceBase(HelicsSimulationExecutor):
     def daily_degradation(self, param_dict : dict, simulation_time : datetime, time_step_number : TimeStepInformation, esdl_id : EsdlId, energy_system : EnergySystem):
         pass
     
+    def battery_state(self, param_dict : dict, simulation_time : datetime, time_step_number : TimeStepInformation, esdl_id : EsdlId, energy_system : EnergySystem):
+        pass
+
     def battery_dispatch(self, param_dict : dict, simulation_time : datetime, time_step_number : TimeStepInformation, esdl_id : EsdlId, energy_system : EnergySystem):
         pass
-    
