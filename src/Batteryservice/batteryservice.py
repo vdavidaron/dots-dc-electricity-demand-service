@@ -25,6 +25,9 @@ class Batteryservice(BatteryserviceBase):
         self.battery_states = {}
         self.manual_subs = {}
         self._manual_subs_registered = False
+        for calc in self.calculations:
+            if calc.helics_value_federate_info.calculation_name == "battery_dispatch":
+                calc.helics_value_federate_info.offset = 20
     
     def init_calculation_service(self, energy_system: esdl.EnergySystem):
         super().init_calculation_service(energy_system)
