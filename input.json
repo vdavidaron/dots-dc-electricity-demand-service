@@ -56,7 +56,7 @@
             "name": "battery_dispatch",
             "description": "Consumes the network setpoint.",
             "time_period_in_seconds": 900,
-            "offset_in_seconds": 0,
+            "offset_in_seconds": 20,
             "inputs": [
                 {
                     "name": "bess_allocation_w",
