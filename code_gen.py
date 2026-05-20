@@ -12,13 +12,15 @@ class FindReplace:
 
 def replace_string_in_file(file_path, find_replace : List[FindReplace]):
     if os.path.exists(file_path):
-        with open(file_path, 'r') as file:
+        # 1. Open with encoding='utf-8' to read the file safely
+        with open(file_path, 'r', encoding='utf-8') as file:
             filedata = file.read()
 
         for item in find_replace:
             filedata = filedata.replace(item.find, item.replace)
 
-        with open(file_path, 'w') as file:
+        # 2. Open with encoding='utf-8' to write it back correctly
+        with open(file_path, 'w', encoding='utf-8') as file:
             file.write(filedata)
 
 code_generator = CodeGenerator()
