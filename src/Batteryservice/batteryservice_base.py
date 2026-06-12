@@ -13,32 +13,6 @@ class BatteryserviceBase(HelicsSimulationExecutor):
         super().__init__()
         self.esdl_obj_mapping : dict[EsdlId, Battery]= {}
 
-        
-        # Calculation: daily_degradation
-        self.daily_degradation_period_seconds = 86400
-        daily_degradation_inputs = [
-        
-        ]
-        daily_degradation_outputs = [
-        
-            PublicationDescription(global_flag=True, 
-                                    esdl_type="Battery",
-                                    output_name="health_capacity_degradation",
-                                    output_unit="pct", 
-                                    data_type=h.HelicsDataType.DOUBLE),
-        ]
-        daily_degradation_information = HelicsCalculationInformation(
-            time_period_in_seconds=86400,
-            offset=0, 
-            uninterruptible=False, 
-            wait_for_current_time_update=False, 
-            terminate_on_error=True, 
-            calculation_name="daily_degradation", 
-            inputs=daily_degradation_inputs, 
-            outputs=daily_degradation_outputs, 
-            calculation_function=self.daily_degradation
-        )
-        self.add_calculation(daily_degradation_information)
         # Calculation: battery_state
         self.battery_state_period_seconds = 900
         battery_state_inputs = []
@@ -102,9 +76,6 @@ class BatteryserviceBase(HelicsSimulationExecutor):
             if hasattr(esdl_obj, "id"):
                 self.esdl_obj_mapping[esdl_obj.id] = esdl_obj
 
-    
-    def daily_degradation(self, param_dict : dict, simulation_time : datetime, time_step_number : TimeStepInformation, esdl_id : EsdlId, energy_system : EnergySystem):
-        pass
     
     def battery_state(self, param_dict : dict, simulation_time : datetime, time_step_number : TimeStepInformation, esdl_id : EsdlId, energy_system : EnergySystem):
         pass

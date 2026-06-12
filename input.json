@@ -1,24 +1,9 @@
 {
     "name": "BatteryService",
     "esdl_type": "Battery",
-    "description": "Simulates a Battery Energy Storage System (BESS) tracking State of Charge (SoC) and degradation.",
+    "description": "Simulates a Battery Energy Storage System (BESS) tracking State of Charge (SoC).",
     "relevant_links": [],
     "calculations": [
-        {
-            "name": "daily_degradation",
-            "description": "Calculates daily battery health impact.",
-            "time_period_in_seconds": 86400,
-            "offset_in_seconds": 0,
-            "inputs": [],
-            "outputs": [
-                {
-                    "name": "health_capacity_degradation",
-                    "data_type": "DOUBLE",
-                    "description": "Degradation percentage per day.",
-                    "unit": "pct"
-                }
-            ]
-        },
         {
             "name": "battery_state",
             "description": "Publishes the current physical state limits of the battery.",
