@@ -37,11 +37,11 @@ class Batteryservice(BatteryserviceBase):
         super().init_calculation_service(energy_system)
         LOGGER.info("Initializing Battery Service states...")
         
-        # Iterate over all batteries assigned to this federate
         for esdl_id in self.simulator_configuration.esdl_ids:
             capacity_wh = 2_700_000.0
             charge_eff = 0.95
             discharge_eff = 0.95
+            initial_soc_fraction = 0.0  # Default to 0% if not specified
             
             # Query the energy_system via our base class esdl_obj_mapping
             esdl_battery = self.esdl_obj_mapping.get(esdl_id)
@@ -61,9 +61,12 @@ class Batteryservice(BatteryserviceBase):
                     max_charge_w = float(esdl_battery.maxChargeRate)
                 if getattr(esdl_battery, 'maxDischargeRate', 0.0) != 0.0:
                     max_discharge_w = float(esdl_battery.maxDischargeRate)
+                if hasattr(esdl_battery, 'fillLevel') and esdl_battery.fillLevel is not None:
+                    # fillLevel is typically a fraction (0.0 - 1.0) in ESDL
+                    initial_soc_fraction = float(esdl_battery.fillLevel)
             
             self.battery_states[esdl_id] = {
-                "soc_wh": capacity_wh * 0.5,     # Start at 50% SoC to match EMS logic
+                "soc_wh": capacity_wh * initial_soc_fraction,
                 "capacity_wh": capacity_wh,
                 "max_charge_power_w": max_charge_w,
                 "max_discharge_power_w": max_discharge_w,
@@ -73,7 +76,7 @@ class Batteryservice(BatteryserviceBase):
 
     def battery_state(self, param_dict: dict, simulation_time: datetime, time_step_number: TimeStepInformation, esdl_id: EsdlId, energy_system: esdl.EnergySystem):
         state = self.battery_states.get(esdl_id)
-        if not state: return BatteryDispatchOutput(0.0, 50.0, 0.0, 0.0)
+        if not state: return BatteryDispatchOutput(0.0, 0.0, 0.0, 0.0)
             
         time_step_hours = 900.0 / 3600.0 
         capacity_wh = state["capacity_wh"]
